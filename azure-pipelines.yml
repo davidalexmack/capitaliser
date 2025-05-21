@@ -1,0 +1,95 @@
+# Maven package Java project Web App to Linux on Azure
+# Build your Java project and deploy it to Azure as a Linux web app
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/java
+
+trigger:
+- master
+
+variables:
+
+  # Azure Resource Manager connection created during pipeline creation
+  azureSubscription: 'da7fcfac-66f4-46fd-89a3-bba6736943ae'
+
+  # Web app name
+  webAppName: 'capitalismwebapp'
+
+  # Environment name
+  environmentName: 'capitalismwebapp'
+
+  # Agent VM image name
+  vmImageName: 'ubuntu-latest'
+
+  # artifactId from POM file
+  artifactId: 'capitalism'
+
+stages:
+
+
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: MavenPackageAndPublishArtifacts
+    displayName: Maven Package and Publish Artifacts
+    pool: myPool
+      #vmImage: $(vmImageName)
+    steps:
+    - script: |
+        echo "##vso[task.setvariable variable=AZURE_ARTIFACTS_ENV_ACCESS_TOKEN;]$(System.AccessToken)"
+      displayName: 'Enable OAuth Token'
+
+    - script: |
+        mvn versions:set -DnewVersion=$(Build.BuildId)
+      displayName: 'Update Maven version'
+
+    - task: Maven@4
+      displayName: 'Maven Package'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        mavenOptions: '-Xmx3072m'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.17' 
+        jdkArchitectureOption: 'x64'
+        publishJUnitResults: true
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+        goals: 'clean package'
+
+    - task: MavenAuthenticate@0
+      displayName: 'Authenticate to Azure Artifacts feed'
+      inputs:
+        artifactsFeeds: 'capitalismfeed'        ## Select one or multiple feeds to authenticate with.
+    - script: |
+       mvn deploy
+      displayName: 'Publish'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Files to artifact staging directory'
+      inputs:
+        SourceFolder: '$(System.DefaultWorkingDirectory)'
+        Contents: '**/target/*.?(war|jar)'
+        TargetFolder: $(Build.ArtifactStagingDirectory)
+
+    - upload: $(Build.ArtifactStagingDirectory)
+      artifact: 'drop-$(Build.BuildId)'
+
+- stage: Deploy
+  displayName: Deploy stage
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - deployment: DeployLinuxWebApp
+    displayName: Deploy Linux Web App
+    environment: $(environmentName)
+    pool: myPool
+      #vmImage: $(vmImageName)
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            displayName: 'Azure Web App Deploy: capitalismapp'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              appType: webAppLinux
+              appName: $(webAppName)
+              package: '$(Pipeline.Workspace)/drop-$(Build.BuildId)/target/$(artifactId)-$(Build.BuildId).jar'

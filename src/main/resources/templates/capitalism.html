@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Capitalism</title>
+</head>
+<body>
+<h1>Magic Word Processor</h1>
+<form action="/capitalism" method="get">
+    <label for="word">Enter a word:</label>
+    <input type="text" id="word" name="word">
+    <button type="submit">Capitalise!</button>
+</form>
+
+<p>Original Word: <span th:text="${inputWord}"></span></p>
+<p>Capitalised Word: <span th:text="${upperWord}"></span></p>
+</body>
+</html>
